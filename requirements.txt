@@ -56,7 +56,6 @@ matplotlib==3.5.1
 mdurl==0.1.2
 ml-dtypes==0.2.0
 more-itertools==8.10.0
-mpmath==0.0.0
 netifaces==0.11.0
 networkx==3.2.1
 numpy==1.26.2
