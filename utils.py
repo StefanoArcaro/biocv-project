@@ -5,6 +5,8 @@
 ####################################################################################################
 
 import os
+import zipfile
+import shutil
 import numpy as np
 import cv2
 import pydicom
@@ -12,6 +14,7 @@ import skimage.transform
 from scipy.ndimage import zoom
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
+
 
 # Fix randomness and hide warnings
 SEED = 1234
@@ -30,6 +33,7 @@ import random
 random.seed(SEED)
 
 import logging
+
 
 # Import tensorflow and related libraries
 import tensorflow as tf
@@ -68,6 +72,7 @@ PREPROCESSED_DATA_TEST_PATH = 'data/test/'
 TARGET_RESOLUTION = [1, 1, 1]
 AVERAGE_VOLUME_SHAPE = [32, 272, 272]
 
+
 # Variables for preparing the data for training
 
 LIVER_RANGE = [55, 70]
@@ -88,8 +93,34 @@ CATEGORY_MAP = {
     252: 4  # Spleen
 }
 
+
 # Variables for training the network
 SEED = 1234
+
+
+# Variables for plotting
+SAMPLE_FIGSIZE = (10, 10)
+RESULTS_FIGSIZE = (18, 3)
+PREDICTION_FIGSIZE = (6,18)
+DEFAULT_CMAP = 'gray'
+DEFAULT_LABEL_CMAP = 'jet'
+
+
+# Variables for streamlit visualizer
+TEMP_DIR = 'temp_extracted_folder'
+MODEL_PATH = 'models/'
+BEST_MODEL = 'unet_da_weights.keras'
+NUM_CLASSES = len(CATEGORY_MAP)
+BATCH_SIZE = 8
+
+@keras.utils.register_keras_serializable()
+class UpdatedMeanIoU(tf.keras.metrics.MeanIoU):
+    def __init__(self, num_classes=None, name="mean_iou", dtype=None, **kwargs):
+        super(UpdatedMeanIoU, self).__init__(num_classes=num_classes, name=name, dtype=dtype)
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_pred = tf.math.argmax(y_pred, axis=-1)
+        return super().update_state(y_true, y_pred, sample_weight)
 
 
 ####################################################################################################
@@ -98,13 +129,43 @@ SEED = 1234
 
 ####################################################################################################
 
-# Functions for loading and preprocessing the data
+# Getters
 
 def get_patients_train():
     return PATIENTS_TRAIN
 
 def get_patients_test():
     return PATIENTS_TEST
+
+def get_liver_range():
+    return LIVER_RANGE
+
+def get_right_kidney_range():
+    return RIGHT_KIDNEY_RANGE
+
+def get_left_kidney_range():
+    return LEFT_KIDNEY_RANGE
+
+def get_spleen_range():
+    return SPLEEN_RANGE
+
+def get_liver_value():
+    return LIVER_VALUE
+
+def get_right_kidney_value():
+    return RIGHT_KIDNEY_VALUE
+
+def get_left_kidney_value():
+    return LEFT_KIDNEY_VALUE
+
+def get_spleen_value():
+    return SPLEEN_VALUE
+
+def get_category_map():
+    return CATEGORY_MAP
+
+
+# Functions for loading and preprocessing the data
 
 def load_data(mode='train', verbose=True):
     if mode not in ['train', 'test']:
@@ -169,34 +230,8 @@ def load_preprocessed_data_test():
     # Return the preprocessed images
     return T1_samples, T2_samples
 
+
 # Functions for preparing the data for training
-
-def get_liver_range():
-    return LIVER_RANGE
-
-def get_right_kidney_range():
-    return RIGHT_KIDNEY_RANGE
-
-def get_left_kidney_range():
-    return LEFT_KIDNEY_RANGE
-
-def get_spleen_range():
-    return SPLEEN_RANGE
-
-def get_liver_value():
-    return LIVER_VALUE
-
-def get_right_kidney_value():
-    return RIGHT_KIDNEY_VALUE
-
-def get_left_kidney_value():
-    return LEFT_KIDNEY_VALUE
-
-def get_spleen_value():
-    return SPLEEN_VALUE
-
-def get_category_map():
-    return CATEGORY_MAP
 
 def prepare_data_for_training(T1_samples, T2_samples, T1_labels, T2_labels, verbose=True):
     if verbose:
@@ -323,7 +358,7 @@ def _unet_block(input_layer, num_filters, kernel_size=3, activation='relu', stac
 
 # Functions for plotting
 
-def plot_sample(sample, label=None, plot_separately=False, title=None, figsize=(10, 10), cmap='gray', label_cmap='jet'):
+def plot_sample(sample, label=None, plot_separately=False, title=None, figsize=SAMPLE_FIGSIZE, cmap=DEFAULT_CMAP, label_cmap=DEFAULT_LABEL_CMAP):
     if plot_separately and label is not None:
         fig, axes = plt.subplots(1, 2, figsize=figsize)
         axes[0].imshow(sample, cmap=cmap)
@@ -352,7 +387,7 @@ def plot_results(history):
     best_epoch = np.argmax(history.history['val_mean_iou'])
 
     # Plot the loss (train and validation)
-    plt.figure(figsize=(18,3))
+    plt.figure(figsize=RESULTS_FIGSIZE)
     plt.plot(history.history['loss'], label='Training', alpha=.8, color='#ff7f0e', linewidth=2)
     plt.plot(history.history['val_loss'], label='Validation', alpha=.9, color='#5a9aa5', linewidth=2)
     plt.axvline(x=best_epoch, label='Best epoch', alpha=.3, ls='--', color='#5a9aa5')
@@ -364,7 +399,7 @@ def plot_results(history):
     plt.show()
 
     # Plot the accuracy (train and validation)
-    plt.figure(figsize=(18,3))
+    plt.figure(figsize=RESULTS_FIGSIZE)
     plt.plot(history.history['accuracy'], label='Training', alpha=.8, color='#ff7f0e', linewidth=2)
     plt.plot(history.history['val_accuracy'], label='Validation', alpha=.9, color='#5a9aa5', linewidth=2)
     plt.axvline(x=best_epoch, label='Best epoch', alpha=.3, ls='--', color='#5a9aa5')
@@ -376,7 +411,7 @@ def plot_results(history):
     plt.show()
 
     # Plot the mean intersection over union (train and validation)
-    plt.figure(figsize=(18,3))
+    plt.figure(figsize=RESULTS_FIGSIZE)
     plt.plot(history.history['mean_iou'], label='Training', alpha=.8, color='#ff7f0e', linewidth=2)
     plt.plot(history.history['val_mean_iou'], label='Validation', alpha=.9, color='#5a9aa5', linewidth=2)
     plt.axvline(x=best_epoch, label='Best epoch', alpha=.3, ls='--', color='#5a9aa5')
@@ -387,7 +422,7 @@ def plot_results(history):
     plt.grid(alpha=.3)
     plt.show()
 
-def plot_prediction(model, sample, label, figsize=(6,18), cmap='gray', mask_cmap='jet'):
+def plot_prediction(model, sample, label, figsize=PREDICTION_FIGSIZE, cmap=DEFAULT_CMAP, label_cmap=DEFAULT_LABEL_CMAP):
     # Predict the sample
     prediction = model.predict(np.expand_dims(sample, axis=0))[0]
     prediction = np.argmax(prediction, axis=-1)
@@ -399,17 +434,100 @@ def plot_prediction(model, sample, label, figsize=(6,18), cmap='gray', mask_cmap
     axes[0].axis('off')
 
     axes[1].imshow(sample, cmap=cmap)
-    axes[1].imshow(label, cmap=mask_cmap, alpha=0.5)
+    axes[1].imshow(label, cmap=label_cmap, alpha=0.5)
     axes[1].set_title('Label')
     axes[1].axis('off')
 
     axes[2].imshow(sample, cmap=cmap)
-    axes[2].imshow(prediction, cmap=mask_cmap, alpha=0.5)
+    axes[2].imshow(prediction, cmap=label_cmap, alpha=0.5)
     axes[2].set_title('Prediction')
     axes[2].axis('off')
 
     plt.show()
 
+
+# Functions for streamlit visualizer
+
+def load_dicom_volume_from_zip(zip_file):
+    # Extract the contents of the zip file to a temporary directory
+    temp_dir = TEMP_DIR
+    os.makedirs(temp_dir, exist_ok=True)
+    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+        zip_ref.extractall(temp_dir)
+
+        # Define the path to the extracted folder
+        extracted_folder = os.path.join(temp_dir, zip_file.name.split('.')[0])
+
+    # Load DICOM images from the extracted folder
+    volume, voxel_dimensions = _visualizer_load_volume(extracted_folder)
+
+    # Cleanup: Remove the temporary extracted folder
+    shutil.rmtree(temp_dir)
+
+    return volume, voxel_dimensions
+
+def load_masks_from_zip(zip_file):
+    # Extract the contents of the zip file to a temporary directory
+    temp_dir = TEMP_DIR
+    os.makedirs(temp_dir, exist_ok=True)
+    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+        zip_ref.extractall(temp_dir)
+
+    # Load masks from the extracted folder
+    masks = _visualizer_load_masks(temp_dir, verbose=False)
+
+    # Cleanup: Remove the temporary extracted folder
+    shutil.rmtree(temp_dir)
+
+    return masks
+
+def preprocess_data(dicom_volume, voxel_dimensions, masks=None):
+    # Preprocess the volume
+    preprocessed_volume = _preprocess_volume(dicom_volume, AVERAGE_VOLUME_SHAPE, voxel_dimensions)
+
+    # If a segmentation is provided, preprocess it as well
+    preprocessed_masks = None
+    if masks is not None:
+        preprocessed_masks = _preprocess_volume(masks, AVERAGE_VOLUME_SHAPE, voxel_dimensions)
+    
+    # Normalize the volume with min-max scaling
+    preprocessed_volume = (preprocessed_volume - np.min(preprocessed_volume)) / (np.max(preprocessed_volume) - np.min(preprocessed_volume))
+
+    return preprocessed_volume, preprocessed_masks
+
+def model_inference(preprocessed_volume, verbose=True):
+
+    if verbose:
+        print('Performing inference...')
+
+    # Reshape the inputs for the model
+    preprocessed_volume = np.expand_dims(preprocessed_volume, axis=-1)
+
+    # Create the model and load the weights
+    model = get_unet_model(preprocessed_volume.shape[1:], NUM_CLASSES)
+    model.load_weights(f'{MODEL_PATH}{BEST_MODEL}')
+
+    if verbose:
+        print(f'- Model input shape: {model.input_shape}')
+        print(f'- Model output shape: {model.output_shape}')
+
+    # Compile the model
+    model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy', UpdatedMeanIoU(num_classes=NUM_CLASSES)])
+
+    # Perform inference
+    predictions = model.predict(preprocessed_volume, batch_size=BATCH_SIZE)
+    predictions = np.argmax(predictions, axis=-1)
+
+    if verbose:
+        print(f'Predictions shape: {predictions.shape}')
+
+    return model, predictions
+
+def calculate_metrics(model, inferred_mask, ground_truth_mask):
+    # Evaluate the model
+    _, accuracy, mean_iou = model.evaluate(inferred_mask, ground_truth_mask)
+
+    return accuracy, mean_iou
 
 ####################################################################################################
 
@@ -465,7 +583,7 @@ def _load_volumes(patients, data_path, samples_path, verbose=True):
                 if filename.endswith(DCM_EXT):
                     image_dcm_std = pydicom.dcmread(os.path.join(f'{data_path}{patient_index}{samples_path}', filename))
 
-                    # Extract the iamge from the DICOM file
+                    # Extract the image from the DICOM file
                     img = image_dcm_std.pixel_array
                     image_vol.append(img)
                 
@@ -536,6 +654,45 @@ def _preprocess_samples(patients, T1_samples_volumes, T1_samples_voxel_dimension
 
     return T1_samples, T2_samples
 
+def _preprocess_volumes(patients, image_volumes, average_volume_shape, voxel_dimensions, verbose=True):
+    # Create a dictionary of the preprocessed image volumes with the patient's index as the key
+    preprocessed_image_volumes = {}
+
+    # Preprocess the image volumes so that they are all the same shape, namely the average volume shape
+    for patient_id in patients:
+        if verbose:
+            print(f'- Preprocessing patient {patient_id}...')
+
+        # Get patient's image volume and voxel dimensions
+        image_volume = image_volumes[patient_id]
+        voxel_dimension = voxel_dimensions[patient_id]
+
+        # Call a function to preprocess a single volume, passing the single volume and voxel dimensions
+        preprocessed_image_volume = _preprocess_volume(image_volume, average_volume_shape, voxel_dimension, verbose=verbose)
+
+        # Add the preprocessed image volume to the dictionary of preprocessed image volumes
+        preprocessed_image_volumes[patient_id] = preprocessed_image_volume
+        
+    if verbose:
+        print(f'\nPreprocessed {len(preprocessed_image_volumes)} patient image volumes')
+    
+    return preprocessed_image_volumes
+
+def _preprocess_volume(image_volume, average_volume_shape, voxel_dimension, verbose=True):
+    # Resample the volume to the target resolution
+    scale_vector = np.asarray(voxel_dimension) / np.asarray(TARGET_RESOLUTION)
+    resampled_volume = skimage.transform.rescale(image_volume, scale_vector, order=3, preserve_range=True, mode='constant')
+
+    # Reshape the interpolated volume to the target shape
+    factors = (np.asarray(average_volume_shape) / np.asarray(resampled_volume.shape))
+    reshaped_volume = zoom(resampled_volume, factors, order=3, mode='nearest')
+    
+    if verbose:
+        print(f'    Shape before preprocessing: {image_volume.shape}')
+        print(f'    Shape after preprocessing: {reshaped_volume.shape}')
+    
+    return reshaped_volume
+
 def _preprocess_labels(patients, T1_labels_volumes, T1_samples_voxel_dimensions, T2_labels_volumes, T2_samples_voxel_dimensions, average_volume_shape, verbose=True):
     if verbose:
         print('\nPreprocessing T1 labels...')
@@ -548,35 +705,6 @@ def _preprocess_labels(patients, T1_labels_volumes, T1_samples_voxel_dimensions,
     T2_labels = _preprocess_volumes(patients, T2_labels_volumes, average_volume_shape, T2_samples_voxel_dimensions, verbose=verbose)
 
     return T1_labels, T2_labels
-
-def _preprocess_volumes(patients, image_volumes, average_volume_shape, voxel_dimensions, verbose=True):
-    # Create a dictionary of the preprocessed image volumes with the patient's index as the key
-    preprocessed_image_volumes = {}
-
-    # Preprocess the image volumes so that they are all the same shape, namely the average volume shape
-    for patient_id in patients:
-        if verbose:
-            print(f'- Preprocessing patient {patient_id}...')
-
-        # Resample the volume to the target resolution
-        scale_vector = np.asarray(voxel_dimensions[patient_id]) / np.asarray(TARGET_RESOLUTION)
-        resampled_volume = skimage.transform.rescale(image_volumes[patient_id], scale_vector, order=3, preserve_range=True, mode='constant')
-
-        # Reshape the interpolated volume to the target shape
-        factors = (np.asarray(average_volume_shape) / np.asarray(resampled_volume.shape))
-        reshaped_volume = zoom(resampled_volume, factors, order=3, mode='nearest')
-        
-        if verbose:
-            print(f'    Shape before preprocessing: {image_volumes[patient_id].shape}')
-            print(f'    Shape after preprocessing: {reshaped_volume.shape}')
-        
-        # Add the preprocessed image volume to the dictionary of preprocessed image volumes
-        preprocessed_image_volumes[patient_id] = reshaped_volume
-        
-    if verbose:
-        print(f'\nPreprocessed {len(preprocessed_image_volumes)} patient image volumes')
-    
-    return preprocessed_image_volumes
 
 def _compute_average_volume_shape(mode, T1_samples_volumes, T2_samples_volumes, verbose=True):
     if mode == 'train':
@@ -665,3 +793,56 @@ def _prepare_labels_for_network(labels, verbose=True):
         print(f'Labels shape: {data_labels.shape}')
 
     return data_labels
+
+# Functions for streamlit visualizer TODO
+
+def _visualizer_load_volume(path, verbose=True):
+    # Load the volumes present in the folder at the specified path
+    volume = []
+
+    valid_file = False
+
+    for _,  _, files in sorted(os.walk(path)):
+        for filename in (sorted(files)):
+            if filename.endswith(DCM_EXT):
+                valid_file = True
+
+                image_dcm_std = pydicom.dcmread(os.path.join(path, filename))
+
+                # Extract the image from the DICOM file
+                img = image_dcm_std.pixel_array
+                volume.append(img)
+            else:
+                valid_file = False
+
+        if valid_file:
+            x_space = image_dcm_std.PixelSpacing[0]
+            y_space = image_dcm_std.PixelSpacing[1]
+            z_space = image_dcm_std.SpacingBetweenSlices
+            voxel_dimension = (x_space, y_space, z_space)
+
+        image_volume_raw = np.array(volume)
+        voxel_dimension = np.array(voxel_dimension)
+
+        if verbose:
+            print(f'Volume shape: {image_volume_raw.shape}')
+            print(f'Voxel dimensions: {voxel_dimension}')
+
+    return image_volume_raw, voxel_dimension
+
+def _visualizer_load_masks(path, verbose=True):
+    # Load the masks present in the folder at the specified path
+    masks = []
+
+    for _,  _, files in sorted(os.walk(path)):
+        for filename in (sorted(files)):
+            if filename.endswith(PNG_EXT):
+                image = cv2.imread(os.path.join(path, filename), cv2.IMREAD_GRAYSCALE)
+                masks.append(image)
+
+    masks = np.array(masks)
+
+    if verbose:
+        print(f'Masks shape: {masks.shape}')
+
+    return masks

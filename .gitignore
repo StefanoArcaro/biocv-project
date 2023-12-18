@@ -5,3 +5,6 @@
 # Ignore data and models folders
 /data/
 /models/
+
+# Ignore test file
+/test.py
