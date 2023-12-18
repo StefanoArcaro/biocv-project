@@ -459,7 +459,7 @@ def load_dicom_volume_from_zip(zip_file):
         extracted_folder = os.path.join(temp_dir, zip_file.name.split('.')[0])
 
     # Load DICOM images from the extracted folder
-    volume, voxel_dimensions = _visualizer_load_volume(extracted_folder)
+    volume, voxel_dimensions = _visualizer_load_volume(extracted_folder, verbose=False)
 
     # Cleanup: Remove the temporary extracted folder
     shutil.rmtree(temp_dir)
@@ -473,27 +473,34 @@ def load_masks_from_zip(zip_file):
     with zipfile.ZipFile(zip_file, 'r') as zip_ref:
         zip_ref.extractall(temp_dir)
 
+        # Define the path to the extracted folder
+        extracted_folder = os.path.join(temp_dir, zip_file.name.split('.')[0])
+
     # Load masks from the extracted folder
-    masks = _visualizer_load_masks(temp_dir, verbose=False)
+    masks = _visualizer_load_masks(extracted_folder)
 
     # Cleanup: Remove the temporary extracted folder
     shutil.rmtree(temp_dir)
 
     return masks
 
-def preprocess_data(dicom_volume, voxel_dimensions, masks=None):
+def preprocess_data_volume(dicom_volume, voxel_dimensions):
     # Preprocess the volume
-    preprocessed_volume = _preprocess_volume(dicom_volume, AVERAGE_VOLUME_SHAPE, voxel_dimensions)
-
-    # If a segmentation is provided, preprocess it as well
-    preprocessed_masks = None
-    if masks is not None:
-        preprocessed_masks = _preprocess_volume(masks, AVERAGE_VOLUME_SHAPE, voxel_dimensions)
+    preprocessed_volume = _preprocess_volume(dicom_volume, AVERAGE_VOLUME_SHAPE, voxel_dimensions, verbose=False)
     
     # Normalize the volume with min-max scaling
     preprocessed_volume = (preprocessed_volume - np.min(preprocessed_volume)) / (np.max(preprocessed_volume) - np.min(preprocessed_volume))
 
-    return preprocessed_volume, preprocessed_masks
+    return preprocessed_volume
+
+def preprocess_data_ground_truth_masks(masks, voxel_dimensions):
+    # Preprocess the volume
+    preprocessed_masks = _preprocess_volume(masks, AVERAGE_VOLUME_SHAPE, voxel_dimensions, verbose=False)
+
+    # Map the values in the volume to the categories
+    preprocessed_masks = _visualizer_preprocess_ground_truth_masks(preprocessed_masks)
+
+    return preprocessed_masks
 
 def model_inference(preprocessed_volume, verbose=True):
 
@@ -515,7 +522,7 @@ def model_inference(preprocessed_volume, verbose=True):
     model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy', UpdatedMeanIoU(num_classes=NUM_CLASSES)])
 
     # Perform inference
-    predictions = model.predict(preprocessed_volume, batch_size=BATCH_SIZE)
+    predictions = model.predict(preprocessed_volume, batch_size=BATCH_SIZE, verbose=verbose)
     predictions = np.argmax(predictions, axis=-1)
 
     if verbose:
@@ -523,11 +530,28 @@ def model_inference(preprocessed_volume, verbose=True):
 
     return model, predictions
 
-def calculate_metrics(model, inferred_mask, ground_truth_mask):
-    # Evaluate the model
-    _, accuracy, mean_iou = model.evaluate(inferred_mask, ground_truth_mask)
+def calculate_metrics(model, inferred_masks, ground_truth_masks):
+    # Create an array for the accuracy and mean IoU values
+    accuracy_list = []
+    mean_iou_list = []
 
-    return accuracy, mean_iou
+    # Get the average accuracy and mean IoU
+    _, average_accuracy, average_mean_iou = model.evaluate(inferred_masks, ground_truth_masks, batch_size=BATCH_SIZE, verbose=0)
+
+    # Evaluate the model for each slice
+    for i in range(inferred_masks.shape[0]):
+        # Get the predicted and ground truth masks for the slice
+        predicted_mask = inferred_masks[i]
+        ground_truth_mask = ground_truth_masks[i]
+
+        # Compute the accuracy and mean IoU for the slice
+        accuracy, mean_iou = _visualizer_compute_metrics(model, predicted_mask, ground_truth_mask)
+
+        # Add the accuracy and mean IoU to the lists
+        accuracy_list.append(accuracy)
+        mean_iou_list.append(mean_iou)
+        
+    return np.array(accuracy_list), np.array(mean_iou_list), average_accuracy, average_mean_iou
 
 ####################################################################################################
 
@@ -738,6 +762,7 @@ def _get_average_volume_shape(image_volumes):
     # Return the average volume shape
     return average_volume_shape
 
+
 # Functions for preparing the data for the network
 
 def _prepare_samples_for_network(samples, verbose=True):
@@ -794,7 +819,8 @@ def _prepare_labels_for_network(labels, verbose=True):
 
     return data_labels
 
-# Functions for streamlit visualizer TODO
+
+# Functions for streamlit visualizer
 
 def _visualizer_load_volume(path, verbose=True):
     # Load the volumes present in the folder at the specified path
@@ -834,7 +860,7 @@ def _visualizer_load_masks(path, verbose=True):
     # Load the masks present in the folder at the specified path
     masks = []
 
-    for _,  _, files in sorted(os.walk(path)):
+    for _, _, files in sorted(os.walk(path)):
         for filename in (sorted(files)):
             if filename.endswith(PNG_EXT):
                 image = cv2.imread(os.path.join(path, filename), cv2.IMREAD_GRAYSCALE)
@@ -846,3 +872,24 @@ def _visualizer_load_masks(path, verbose=True):
         print(f'Masks shape: {masks.shape}')
 
     return masks
+
+def _visualizer_preprocess_ground_truth_masks(masks):
+    # Get the masks for the different categories
+    liver_masks = np.where((masks >= LIVER_RANGE[0]) & (masks <= LIVER_RANGE[1]), LIVER_VALUE, 0)
+    right_kidney_masks = np.where((masks >= RIGHT_KIDNEY_RANGE[0]) & (masks <= RIGHT_KIDNEY_RANGE[1]), RIGHT_KIDNEY_VALUE, 0)
+    left_kidney_masks = np.where((masks >= LEFT_KIDNEY_RANGE[0]) & (masks <= LEFT_KIDNEY_RANGE[1]), LEFT_KIDNEY_VALUE, 0)
+    spleen_masks = np.where((masks >= SPLEEN_RANGE[0]) & (masks <= SPLEEN_RANGE[1]), SPLEEN_VALUE, 0)
+
+    # Combine the masks into a single mask
+    organ_masks = liver_masks + right_kidney_masks + left_kidney_masks + spleen_masks
+
+    # Map the labels to the categories
+    preprocessed_masks = np.vectorize(CATEGORY_MAP.get)(organ_masks)
+
+    return preprocessed_masks
+
+def _visualizer_compute_metrics(model, predicted_mask, ground_truth_mask):
+    # Compute the accuracy and mean IoU
+    _, accuracy, mean_iou = model.evaluate(np.expand_dims(predicted_mask, axis=0), np.expand_dims(ground_truth_mask, axis=0), verbose=0)
+
+    return accuracy, mean_iou

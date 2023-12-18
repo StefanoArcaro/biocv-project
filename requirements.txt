@@ -13,6 +13,7 @@ chardet==4.0.0
 charset-normalizer==3.3.0
 click==8.1.7
 command-not-found==0.3
+configparser==6.0.0
 cryptography==3.4.8
 cycler==0.11.0
 dbus-python==1.2.18
@@ -90,6 +91,7 @@ pydicom==2.4.3
 Pygments==2.16.1
 PyGObject==3.42.1
 PyJWT==2.3.0
+PyMySQL==1.1.0
 pyparsing==2.4.7
 python-apt==2.4.0+ubuntu2
 python-dateutil==2.8.2
@@ -106,11 +108,12 @@ scikit-image==0.22.0
 scikit-learn==1.3.0
 scipy==1.11.2
 SecretStorage==3.3.1
+shutils==0.1.0
 six==1.16.0
 smmap==5.0.1
 soupsieve==2.3.1
 st-pages==0.4.5
-streamlit==1.27.2
+streamlit==1.29.0
 sympy==1.9
 systemd-python==234
 tenacity==8.2.3
