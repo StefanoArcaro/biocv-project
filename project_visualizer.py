@@ -1,7 +1,7 @@
 import streamlit as st
 import numpy as np
 import cv2
-import utils
+import my_utils
 
 # Set page configuration
 st.set_page_config(
@@ -12,36 +12,36 @@ st.set_page_config(
 
 @st.cache_data
 def load_data(dicom_zip_file, masks_zip_file):
-    dicom_volume, voxel_dimensions = utils.load_dicom_volume_from_zip(dicom_zip_file)
+    dicom_volume, voxel_dimensions = my_utils.load_dicom_volume_from_zip(dicom_zip_file)
 
     ground_truth_masks = None
     if masks_zip_file is not None:
-        ground_truth_masks = utils.load_masks_from_zip(masks_zip_file)
+        ground_truth_masks = my_utils.load_masks_from_zip(masks_zip_file)
         print(ground_truth_masks.shape)
 
     return dicom_volume, voxel_dimensions, ground_truth_masks
 
 @st.cache_data
 def preprocess_volume(dicom_volume, voxel_dimensions):
-    preprocessed_volume = utils.preprocess_data_volume(dicom_volume, voxel_dimensions)
+    preprocessed_volume = my_utils.preprocess_data_volume(dicom_volume, voxel_dimensions)
 
     return preprocessed_volume
 
 @st.cache_data
 def preprocess_ground_truth_masks(ground_truth_masks, voxel_dimensions):
-    preprocessed_masks = utils.preprocess_data_ground_truth_masks(ground_truth_masks, voxel_dimensions)
+    preprocessed_masks = my_utils.preprocess_data_ground_truth_masks(ground_truth_masks, voxel_dimensions)
 
     return preprocessed_masks
 
 @ st.cache_resource
 def model_inference(preprocessed_volume):
-    model, inferred_masks = utils.model_inference(preprocessed_volume, verbose=False)
+    model, inferred_masks = my_utils.model_inference(preprocessed_volume, verbose=False)
 
     return model, inferred_masks
 
 @st.cache_resource
 def calculate_metrics(_model, inferred_masks, preprocessed_masks):
-    accuracy_list, mean_iou_list, average_accuracy, average_mean_iou = utils.calculate_metrics(_model, inferred_masks, preprocessed_masks)
+    accuracy_list, mean_iou_list, average_accuracy, average_mean_iou = my_utils.calculate_metrics(_model, inferred_masks, preprocessed_masks)
 
     return accuracy_list, mean_iou_list, average_accuracy, average_mean_iou
 
