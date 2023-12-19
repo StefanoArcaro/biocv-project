@@ -11,15 +11,18 @@ st.set_page_config(
 )
 
 @st.cache_data
-def load_data(dicom_zip_file, masks_zip_file):
+def load_dicom_volume(dicom_zip_file):
     dicom_volume, voxel_dimensions = my_utils.load_dicom_volume_from_zip(dicom_zip_file)
 
+    return dicom_volume, voxel_dimensions
+
+@st.cache_data
+def load_masks(masks_zip_file):
     ground_truth_masks = None
     if masks_zip_file is not None:
         ground_truth_masks = my_utils.load_masks_from_zip(masks_zip_file)
-        print(ground_truth_masks.shape)
 
-    return dicom_volume, voxel_dimensions, ground_truth_masks
+    return ground_truth_masks
 
 @st.cache_data
 def preprocess_volume(dicom_volume, voxel_dimensions):
@@ -148,19 +151,18 @@ def main():
 
     # Check if DICOM zip file is uploaded
     if dicom_zip_file is not None:
-        # Process data
-        dicom_volume, voxel_dimensions, ground_truth_masks = load_data(dicom_zip_file, masks_zip_file)
+        # Load data
+        dicom_volume, voxel_dimensions = load_dicom_volume(dicom_zip_file)
+        ground_truth_masks = load_masks(masks_zip_file)
 
-        # Proceed only if a button is clicked
-        #if st.button("Process"):
-        # Preprocess data and perform inference
-        # model, preprocessed_volume, inferred_masks, preprocessed_masks = preprocess_and_infer(dicom_volume, voxel_dimensions, ground_truth_masks)
+        # Preprocess data
         preprocessed_volume = preprocess_volume(dicom_volume, voxel_dimensions)
 
         preprocessed_masks = None
         if ground_truth_masks is not None:
             preprocessed_masks = preprocess_ground_truth_masks(ground_truth_masks, voxel_dimensions)
-            
+        
+        # Perform inference
         model, inferred_masks = model_inference(preprocessed_volume)
 
         # Display interactive slider for selecting slice

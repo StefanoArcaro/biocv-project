@@ -477,7 +477,7 @@ def load_masks_from_zip(zip_file):
         extracted_folder = os.path.join(temp_dir, zip_file.name.split('.')[0])
 
     # Load masks from the extracted folder
-    masks = _visualizer_load_masks(extracted_folder)
+    masks = _visualizer_load_masks(extracted_folder, verbose=False)
 
     # Cleanup: Remove the temporary extracted folder
     shutil.rmtree(temp_dir)

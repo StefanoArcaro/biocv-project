@@ -2,9 +2,8 @@
 /__pycache__
 /configs
 
-# Ignore data and models folders
+# Ignore data folder
 /data/
-/models/
 
 # Ignore test file
 /test.py
