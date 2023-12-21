@@ -13,11 +13,27 @@ The used part of the dataset is divided into two subsets: T1DUAL-InPhase and T2S
 
 ## Model/Models
 
-<!-- Add a detailed description of the model or models used in this project. -->
+The model used for this project is a U-Net, a convolutional neural network architecture that is commonly used for image segmentation tasks.
+Two different data augmentation pipelines have also been used, although the results obtained with them are not satisfactory.
+
+The UNet without data augmentation is therefore the best model for this project.
 
 ## Results Comparison
 
-<!-- Discuss and compare the results obtained with different models. -->
+The results in the following table are expressed in terms of Mean Intersection over Union and are obtained by comparing the predicted segmentations with the ground truth segmentations.
+
+|  | Unet - No Data Augmentation | UNet - Strong Data Augmentation | UNet - Weak Data Augmentation |
+| :---         |     :---:      |          :---: |         :---: |
+| **Training Set**   | <ins>0.8426     | 0.6158    | 0.8375      |
+| **Test Set**     | <ins>0.8075       | 0.7919      | 0.8030    |
+
+## Streamlit App
+
+I also created a small web application with Streamlit to show the results of the model on any DICOM volume.
+
+In this repository, you can also find a sample volume, together with its ground truth segmentations, to test the app.
+
+To access the app, simply click on the following link: [https://segmentation-visualizer.streamlit.app/](https://segmentation-visualizer.streamlit.app/)
 
 ## How to Use
 
