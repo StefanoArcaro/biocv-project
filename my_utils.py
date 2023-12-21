@@ -109,7 +109,7 @@ DEFAULT_LABEL_CMAP = 'jet'
 # Variables for streamlit visualizer
 TEMP_DIR = 'temp_extracted_folder'
 MODEL_PATH = 'models/'
-BEST_MODEL = 'unet_final_weights.keras'
+BEST_MODEL = 'unet_weights.keras'
 NUM_CLASSES = len(CATEGORY_MAP)
 BATCH_SIZE = 8
 
