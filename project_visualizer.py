@@ -36,7 +36,7 @@ def preprocess_ground_truth_masks(ground_truth_masks, voxel_dimensions):
 
     return preprocessed_masks
 
-@ st.cache_resource
+@st.cache_resource
 def model_inference(preprocessed_volume):
     model, inferred_masks = my_utils.model_inference(preprocessed_volume, verbose=False)
 
@@ -177,8 +177,9 @@ def main():
         if ground_truth_masks is not None:
             # Calculate and display metrics
             #calculate_and_display_metrics(model, inferred_masks, preprocessed_masks, selected_slice)
-            accuracy_list, mean_iou_list, average_accuracy, average_mean_iou = calculate_metrics(model, inferred_masks, preprocessed_masks)
-            display_metrics(accuracy_list, mean_iou_list, average_accuracy, average_mean_iou, selected_slice)
+            #accuracy_list, mean_iou_list, average_accuracy, average_mean_iou = calculate_metrics(model, inferred_masks, preprocessed_masks)
+            #display_metrics(accuracy_list, mean_iou_list, average_accuracy, average_mean_iou, selected_slice)
+            pass
 
 if __name__ == "__main__":
     main()
